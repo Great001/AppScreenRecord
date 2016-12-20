@@ -37,4 +37,12 @@
         android:layout_below="@+id/btn_start_record"
         android:layout_centerHorizontal="true"
         android:layout_marginTop="20dp"/>
+
+
+    <SurfaceView
+        android:id="@+id/sv_preview"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:layout_below="@+id/btn_stop_record"
+        android:layout_marginTop="20dp"/>
 </RelativeLayout>

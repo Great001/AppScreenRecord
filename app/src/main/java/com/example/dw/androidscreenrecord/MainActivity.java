@@ -12,6 +12,8 @@ import android.os.Environment;
 import android.support.v4.app.ActivityCompat;
 import android.support.v4.content.ContextCompat;
 import android.support.v7.app.AppCompatActivity;
+import android.view.Surface;
+import android.view.SurfaceView;
 import android.view.View;
 import android.widget.Button;
 import android.widget.TextView;
@@ -28,22 +30,28 @@ import java.io.File;
 //利用Android 5.0后提供的屏幕录制api MediaProjectionManager MediaProjection  VirturalDisplay 实现录屏
 //利用android 4.3之后提供的 MediaCodec 对VirturalDisplay输出的surface进行相应的编码
 //利用Android 4.1之后提供的 MediaMuxer 实现对编码后的视频数据合成MP4文件
+//同时实时对取出编码得到的数据利用MediaCodec进行硬解码，实时显示录屏情况，但由于一些原因，解码不出画面，解决了很久，这方面仍然不够完善，以后再完善了。。。。。。
 
 //由于时间关系，暂时还没有接入音轨录制，不过原理都是差不多的吧
+// 当然，如果也可以将MediaCodex编码的视频数据进行相应封装，经过网络传送到服务器，进而在传递给用户，在用户端解码播放
 
 public class MainActivity extends AppCompatActivity {
 
     private Button mBtnStart;
     private Button mBtnStop;
     private TextView mTvResult;
+    private SurfaceView mSvPreview;   //实时显示录屏情况
 
     private MediaProjection mediaProjection;
     private MediaProjectionManager mediaProjectionManager;
-    private EncoderThread mEncoderThread;
+    private EncoderThread mEncoderThread;  //编码线程
+    private DecoderThread mDecoderThread;  //解码线程
 
     private boolean recordState = false;
 
     public static final int REQUEST_CODE = 111;
+
+
 
 
     @Override
@@ -53,6 +61,7 @@ public class MainActivity extends AppCompatActivity {
         mBtnStart = (Button) findViewById(R.id.btn_start_record);
         mBtnStop = (Button) findViewById(R.id.btn_stop_record);
         mTvResult = (TextView) findViewById(R.id.tv_result);
+        mSvPreview = (SurfaceView) findViewById(R.id.sv_preview);
 
 
         //通过系统服务获取MediaProjectionMananger
@@ -84,13 +93,18 @@ public class MainActivity extends AppCompatActivity {
     }
 
     public void stopRecord() {
-        //阻塞编码线程
+        //停止录制，阻塞线程,清空资源
         if (recordState) {
-            mEncoderThread.interrupt();
             recordState = false;
             if(mEncoderThread != null){
+                mEncoderThread.interrupt();
                 mEncoderThread.quit();
                 mEncoderThread = null;
+            }
+
+            if(mDecoderThread != null){
+                mDecoderThread.release();
+                mDecoderThread.interrupt();
             }
         }
         Toast.makeText(this,"停止录制中......",Toast.LENGTH_SHORT).show();
@@ -119,6 +133,9 @@ public class MainActivity extends AppCompatActivity {
             //开启编码线程进行编码
             mEncoderThread = new EncoderThread(mediaProjection);
             mEncoderThread.start();
+            mDecoderThread = new DecoderThread(mSvPreview.getHolder().getSurface(),720,480);
+            mDecoderThread.start();
+            mEncoderThread.setEncodeListener(mDecoderThread);
             recordState = true;
         }
     }

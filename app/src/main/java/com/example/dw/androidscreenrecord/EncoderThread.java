@@ -41,6 +41,8 @@ public class EncoderThread extends Thread {
 
     private String mSavePath;
 
+    private EncoderThread.EncodeListener listener;
+
 
     public static final String MINE_TYPE = "video/avc";
     public static final String TAG = "screen record";
@@ -73,16 +75,17 @@ public class EncoderThread extends Thread {
         mQuit.set(true);
     }
 
-
+    //传入MediaCodec生成的Surface,利用MediaCodec编码surface中的数据
     public void createVirturalDisplay(){
         if(mProjection != null){
+            //这里有个坑：flags设DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR,mSurface这个才行，否则生成的文件无法播放
             mVirtualDisplay = mProjection.createVirtualDisplay(TAG, mWidth, mHeight,mDpi, DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR,mSurface,null,null);
         }
     }
 
-    //利用MediaCodec编码surface中的数据
     private void recordVirtualDisplay() {
         while (!mQuit.get()) {
+            //获取MediaCodec通过h264编码之后的数据
             int outputState = mEncoder.dequeueOutputBuffer(mBufferInfo, 1000);
             if (outputState == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED) {
                 resetOutputFormat();
@@ -99,6 +102,7 @@ public class EncoderThread extends Thread {
         }
     }
 
+//    视频合成
     private void encodeToVideoTrack(int index) {
         ByteBuffer encodedData = mEncoder.getOutputBuffer(index);
         if ((mBufferInfo.flags & MediaCodec.BUFFER_FLAG_CODEC_CONFIG) != 0) {
@@ -110,7 +114,21 @@ public class EncoderThread extends Thread {
         if (encodedData != null) {
             encodedData.position(mBufferInfo.offset);
             encodedData.limit(mBufferInfo.offset + mBufferInfo.size);
+            //合成MP4文件
             mMuxer.writeSampleData(mVideoTrackIndex, encodedData, mBufferInfo);
+
+            //将编码数据实时传给解码器进行解码,
+            //但这里出现问题，导致解码不出画面
+            int offset = encodedData.position();
+            int len = mBufferInfo.size;
+            int size = encodedData.limit();
+            byte [] data = new byte[size];
+            for(int i = offset;i < size ;i++){
+                data[i] = encodedData.get(i);
+            }
+            if(listener != null){
+                listener.onEncode(data,offset,len);
+            }
         }
     }
 
@@ -169,5 +187,15 @@ public class EncoderThread extends Thread {
         }
         return path;
     }
+
+
+    public interface EncodeListener{
+        void onEncode(byte [] data,int offset,int length);
+    }
+
+    public void setEncodeListener(EncodeListener listener){
+        this.listener = listener;
+    }
+
 
 }
